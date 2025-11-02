@@ -27,6 +27,7 @@ def get_companies():
     companies = conn.execute('''
         SELECT DISTINCT CompanyName, Code 
         FROM XbrlDB 
+        WHERE Code IS NOT NULL
         ORDER BY CompanyName
     ''').fetchall()
     conn.close()
@@ -35,6 +36,34 @@ def get_companies():
         'name': company['CompanyName'],
         'code': company['Code']
     } for company in companies])
+
+
+@app.route('/api/company/<code>')
+def get_company_by_code(code):
+    """証券コードで会社を検索"""
+    conn = get_db_connection()
+
+    # 数値型と文字列型の両方で検索
+    try:
+        code_int = int(code) if code.isdigit() else None
+    except:
+        code_int = None
+
+    company = conn.execute('''
+        SELECT DISTINCT CompanyName, Code 
+        FROM XbrlDB 
+        WHERE Code = ? OR Code = ?
+        LIMIT 1
+    ''', (code, code_int)).fetchone()
+    conn.close()
+
+    if company:
+        return jsonify({
+            'name': company['CompanyName'],
+            'code': company['Code']
+        })
+    else:
+        return jsonify({'error': 'Company not found'}), 404
 
 
 @app.route('/api/sales/<company_name>')

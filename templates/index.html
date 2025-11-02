@@ -80,7 +80,7 @@
 
     <div class="controls">
         <label for="codeInput">証券コードで検索:</label>
-        <input type="text" id="codeInput" placeholder="例: 6770" />
+        <input type="text" id="codeInput" placeholder="例: 9929" />
         <button id="searchButton">検索</button>
 
         <label for="companySelect" style="margin-top: 20px;">または会社を選択:</label>
@@ -204,7 +204,7 @@
             loadSalesData(e.target.value);
         });
 
-        // 証券コード検索機能
+        // 証券コード検索機能（修正版）
         document.getElementById('searchButton').addEventListener('click', searchByCode);
         document.getElementById('codeInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -219,21 +219,30 @@
                 return;
             }
 
+            document.getElementById('loading').style.display = 'block';
+
             try {
-                const response = await fetch('/api/companies');
-                const companies = await response.json();
+                const response = await fetch(`/api/company/${encodeURIComponent(code)}`);
 
-                const found = companies.find(c => c.code.toString() === code);
-
-                if (found) {
-                    document.getElementById('companySelect').value = found.name;
-                    loadSalesData(found.name);
+                if (response.ok) {
+                    const company = await response.json();
+                    if (company.error) {
+                        alert(`証券コード ${code} の企業が見つかりませんでした`);
+                        document.getElementById('loading').style.display = 'none';
+                    } else {
+                        // ドロップダウンも更新
+                        document.getElementById('companySelect').value = company.name;
+                        // データを読み込み
+                        await loadSalesData(company.name);
+                    }
                 } else {
                     alert(`証券コード ${code} の企業が見つかりませんでした`);
+                    document.getElementById('loading').style.display = 'none';
                 }
             } catch (error) {
                 console.error('検索エラー:', error);
                 alert('検索に失敗しました');
+                document.getElementById('loading').style.display = 'none';
             }
         }
 
