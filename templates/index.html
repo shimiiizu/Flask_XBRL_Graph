@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>売上高グラフ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            height: 500px;
+        }
+        #loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 企業別売上高推移</h1>
+
+    <div class="controls">
+        <label for="codeInput">証券コードで検索:</label>
+        <input type="text" id="codeInput" placeholder="例: 6770" />
+        <button id="searchButton">検索</button>
+
+        <label for="companySelect" style="margin-top: 20px;">または会社を選択:</label>
+        <select id="companySelect">
+            <option value="">読み込み中...</option>
+        </select>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="salesChart"></canvas>
+    </div>
+
+    <div id="loading" style="display:none;">データを読み込んでいます...</div>
+
+    <script>
+        let chart = null;
+        const ctx = document.getElementById('salesChart').getContext('2d');
+
+        // 会社リストを読み込み
+        async function loadCompanies() {
+            try {
+                const response = await fetch('/api/companies');
+                const companies = await response.json();
+
+                const select = document.getElementById('companySelect');
+                select.innerHTML = '<option value="">会社を選択してください</option>';
+
+                companies.forEach(company => {
+                    const option = document.createElement('option');
+                    option.value = company.name;
+                    option.textContent = `${company.name} (${company.code})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('会社リストの読み込みエラー:', error);
+            }
+        }
+
+        // 売上データを読み込んでグラフを更新
+        async function loadSalesData(companyName) {
+            if (!companyName) return;
+
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/sales/${encodeURIComponent(companyName)}`);
+                const data = await response.json();
+
+                // データを日付順にソート
+                data.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                const labels = data.map(item => {
+                    const date = new Date(item.date);
+                    return `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} (${item.quarter})`;
+                });
+
+                const sales = data.map(item => item.sales / 100000000); // 億円単位に変換
+
+                // 既存のチャートを破棄
+                if (chart) {
+                    chart.destroy();
+                }
+
+                // 新しいチャートを作成
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '売上高 (億円)',
+                            data: sales,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `${companyName} - 売上高推移`,
+                                font: {
+                                    size: 18
+                                }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                title: {
+                                    display: true,
+                                    text: '売上高 (億円)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: '発表日 (四半期)'
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('売上データの読み込みエラー:', error);
+                alert('データの読み込みに失敗しました');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // 会社選択時のイベントリスナー
+        document.getElementById('companySelect').addEventListener('change', (e) => {
+            loadSalesData(e.target.value);
+        });
+
+        // 証券コード検索機能
+        document.getElementById('searchButton').addEventListener('click', searchByCode);
+        document.getElementById('codeInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchByCode();
+            }
+        });
+
+        async function searchByCode() {
+            const code = document.getElementById('codeInput').value.trim();
+            if (!code) {
+                alert('証券コードを入力してください');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/companies');
+                const companies = await response.json();
+
+                const found = companies.find(c => c.code.toString() === code);
+
+                if (found) {
+                    document.getElementById('companySelect').value = found.name;
+                    loadSalesData(found.name);
+                } else {
+                    alert(`証券コード ${code} の企業が見つかりませんでした`);
+                }
+            } catch (error) {
+                console.error('検索エラー:', error);
+                alert('検索に失敗しました');
+            }
+        }
+
+        // ページ読み込み時に会社リストを取得
+        loadCompanies();
+    </script>
+</body>
+</html>
